@@ -158,14 +158,26 @@ export function emptyDoc(unit = 1): Doc {
   return { version: 1, unit, annotations: [], effects: DEFAULT_EFFECTS, crop: null };
 }
 
+/** New screenshots start with the saved frame sizes, and the saved background when it applies. */
 export function screenshotDoc(unit: number, defaults: AutoBeautify, mode: string): Doc {
   const doc = emptyDoc(unit);
-  if (!autoBeautifyApplies(defaults, mode)) return doc;
+  const base = DEFAULT_EFFECTS.beautify;
+  const auto = autoBeautifyApplies(defaults, mode);
+  const { padding, radius, shadow } = defaults;
+  if (!auto && padding === base.padding && radius === base.radius && shadow === base.shadow) {
+    return doc;
+  }
   return {
     ...doc,
     effects: {
       ...doc.effects,
-      beautify: { ...doc.effects.beautify, enabled: true, background: defaults.background },
+      beautify: {
+        ...base,
+        padding,
+        radius,
+        shadow,
+        ...(auto && { enabled: true, background: defaults.background }),
+      },
     },
   };
 }

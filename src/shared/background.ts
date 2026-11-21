@@ -111,6 +111,10 @@ export const autoBeautifySchema = obj({
   enabled: bool(false),
   background: backgroundField,
   modes: obj({ area: bool(true), last: bool(true), screen: bool(true), scroll: bool(true) }),
+  /** Frame for new screenshots, saved from the Beautify popover. */
+  padding: int(48, 0, 200),
+  radius: int(12, 0, 60),
+  shadow: int(40, 0, 100),
 });
 export type AutoBeautify = Infer<typeof autoBeautifySchema>;
 

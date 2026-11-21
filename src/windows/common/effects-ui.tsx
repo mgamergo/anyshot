@@ -1,4 +1,12 @@
-import { type Adjust, type Effects, isAdjustNeutral, NEUTRAL_ADJUST } from '../../engine/model';
+import { useEffect, useState } from 'preact/hooks';
+import {
+  type Adjust,
+  type Beautify,
+  type Effects,
+  isAdjustNeutral,
+  NEUTRAL_ADJUST,
+} from '../../engine/model';
+import type { Settings } from '../../shared/settings';
 import { BackgroundControls } from './background-controls';
 import { useStore } from './store';
 import { Button, type Controller } from './toolbar';
@@ -72,6 +80,51 @@ function Range(props: {
       />
       <span class="val">{props.value.toFixed(props.step < 1 ? 2 : 0)}</span>
     </label>
+  );
+}
+
+type Frame = Pick<Beautify, 'padding' | 'radius' | 'shadow'>;
+
+/** The padding, corners and shadow that new screenshots start with, kept in settings. */
+function useSavedFrame(): Frame | null {
+  const [saved, setSaved] = useState<Frame | null>(null);
+  useEffect(() => {
+    const api = window.anyshot;
+    const pick = (s: Settings) => {
+      const { padding, radius, shadow } = s.capture.beautify;
+      setSaved({ padding, radius, shadow });
+    };
+    void api.invoke('settings:get').then(pick);
+    return api.on('settings:changed', pick);
+  }, []);
+  return saved;
+}
+
+function SaveFrameDefault(frame: Frame) {
+  const saved = useSavedFrame();
+  const [error, setError] = useState(false);
+  const isSaved =
+    saved !== null &&
+    saved.padding === frame.padding &&
+    saved.radius === frame.radius &&
+    saved.shadow === frame.shadow;
+  return (
+    <div class="fx-default">
+      <button
+        type="button"
+        disabled={saved === null || isSaved}
+        data-testid="beautify-save-default"
+        onClick={() => {
+          setError(false);
+          window.anyshot
+            .invoke('settings:patch', { capture: { beautify: { ...frame } } })
+            .catch(() => setError(true));
+        }}
+      >
+        {isSaved ? 'Saved as default' : 'Save as default'}
+      </button>
+      {error && <span role="alert">Couldn't save</span>}
+    </div>
   );
 }
 
@@ -171,6 +224,7 @@ export function EffectPopovers({ c }: { c: Controller }) {
             {range('radius', 'Corners', 0, 30)}
             {range('shadow', 'Shadow', 0, 100)}
           </fieldset>
+          {b.enabled && <SaveFrameDefault padding={b.padding} radius={b.radius} shadow={b.shadow} />}
           <span class="opt hint">
             {b.enabled
               ? 'Applied when you copy, save or pin.'

@@ -314,6 +314,32 @@
 .fx-sliders:disabled {
   opacity: 0.45;
 }
+.fx-default {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fx-default button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--bar-hover);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+.fx-default button:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.fx-default button:disabled {
+  cursor: default;
+  color: var(--bar-muted);
+}
+.fx-default [role='alert'] {
+  color: #ef4444;
+  font-size: 12px;
+}
 .gradients button {
   width: 28px;
   height: 28px;

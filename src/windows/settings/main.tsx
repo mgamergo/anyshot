@@ -96,6 +96,37 @@ function Toggle(props: {
   );
 }
 
+/** Shows the value while dragging; saves once on release. */
+function FrameSlider(props: {
+  label: string;
+  field: 'padding' | 'radius' | 'shadow';
+  value: number;
+  min: number;
+  max: number;
+}) {
+  const [dragging, setDragging] = useState<number | null>(null);
+  const shown = dragging ?? props.value;
+  return (
+    <label>
+      <span>{props.label}</span>
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={1}
+        value={shown}
+        data-testid={`auto-beautify-${props.field}`}
+        onInput={(e) => setDragging(Number(e.currentTarget.value))}
+        onChange={(e) => {
+          setDragging(null);
+          patch({ capture: { beautify: { [props.field]: Number(e.currentTarget.value) } } });
+        }}
+      />
+      <span class="val">{shown}</span>
+    </label>
+  );
+}
+
 function ScreenshotBeautify({ value }: { value: AutoBeautify }) {
   return (
     <>
@@ -121,6 +152,12 @@ function ScreenshotBeautify({ value }: { value: AutoBeautify }) {
                 {label}
               </label>
             ))}
+          </fieldset>
+          <fieldset class="auto-beautify-frame">
+            <legend>Frame</legend>
+            <FrameSlider label="Padding" field="padding" value={value.padding} min={16} max={96} />
+            <FrameSlider label="Corners" field="radius" value={value.radius} min={0} max={30} />
+            <FrameSlider label="Shadow" field="shadow" value={value.shadow} min={0} max={100} />
           </fieldset>
           <details class="auto-beautify-background">
             <summary>Default background</summary>

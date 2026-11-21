@@ -141,6 +141,37 @@ input[type="number"] {
   cursor: pointer;
 }
 
+.auto-beautify-frame {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.auto-beautify-frame legend {
+  padding: 3px 0;
+  color: var(--bar-muted);
+}
+
+.auto-beautify-frame label {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 220px) 36px;
+  align-items: center;
+  gap: 10px;
+}
+
+.auto-beautify-frame input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.auto-beautify-frame .val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .auto-beautify-background summary {
   width: fit-content;
   padding: 5px 0 2px;

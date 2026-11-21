@@ -148,7 +148,10 @@ function selectCapture(rect: Rect, mode: 'area' | 'last' | 'screen'): void {
     const { beautify } = screenshotDoc(docs.doc.unit, init.settings.capture.beautify, mode).effects;
     if (
       beautify.enabled !== automaticBeautify.enabled ||
-      beautify.background !== automaticBeautify.background
+      beautify.background !== automaticBeautify.background ||
+      beautify.padding !== automaticBeautify.padding ||
+      beautify.radius !== automaticBeautify.radius ||
+      beautify.shadow !== automaticBeautify.shadow
     ) {
       docs.setBeautifyDefault(automaticBeautify, beautify);
       automaticBeautify = beautify;

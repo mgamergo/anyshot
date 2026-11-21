@@ -71,6 +71,23 @@ describe('automatic Beautify', () => {
     }
   });
 
+  it('starts new screenshots with the saved padding, corners and shadow', () => {
+    const frame = { padding: 64, radius: 20, shadow: 70 };
+    const off = parseSettings({ capture: { beautify: frame } }).capture.beautify;
+    expect(screenshotDoc(1, off, 'area').effects.beautify).toEqual({
+      ...DEFAULT_EFFECTS.beautify,
+      ...frame,
+    });
+    const on = parseSettings({ capture: { beautify: { ...frame, enabled: true, background: 2 } } })
+      .capture.beautify;
+    expect(screenshotDoc(1, on, 'screen').effects.beautify).toEqual({
+      ...frame,
+      enabled: true,
+      background: 2,
+    });
+    expect(screenshotDoc(1, on, 'ocr').effects.beautify).toMatchObject({ ...frame, enabled: false });
+  });
+
   it('round-trips custom recipes and falls back safely for invalid image data', () => {
     const background = {
       ...DEFAULT_GRADIENT,
