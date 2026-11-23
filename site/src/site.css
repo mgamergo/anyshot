@@ -311,6 +311,59 @@ h1 {
     center / contain no-repeat;
 }
 
+/* features and FAQ: rendered at build time (plugins/seo.ts) */
+.features,
+.faq {
+  max-width: 1040px;
+  margin: 96px auto 0;
+  text-align: left;
+}
+.features h2,
+.faq h2 {
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 0 0 28px;
+}
+.features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 22px 36px;
+}
+.features h3,
+.faq h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  display: inline;
+}
+.features p,
+.faq p {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  color: var(--ink-2);
+}
+.faq {
+  max-width: 760px;
+}
+.faq details {
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+.faq details:last-child {
+  border-bottom: 1px solid var(--line);
+}
+.faq summary {
+  cursor: pointer;
+}
+.faq summary h3 {
+  font-size: 16px;
+}
+
 footer {
   max-width: 1200px;
   margin: 88px auto 0;

@@ -40,3 +40,12 @@ so it works at the domain's root and at the github.io project path alike.
 - `src/capture.ts`: the page's own capture overlay. Drag on the page or press
   Alt+Shift+X, annotate, then copy, save or pin a real PNG (html2canvas, loaded on demand).
 - `src/install.ts`: the install table with OS tabs, architecture, commands and versions.
+
+## Search and AI agents
+
+`plugins/seo.ts` renders, at build time, everything crawlers and agents read without
+running JavaScript: the JSON-LD (`SoftwareApplication`, `WebSite`, `FAQPage`), plain
+download links inside `#install` (the script swaps them for the table), the feature list
+and the FAQ. It also emits `sitemap.xml`, `llms.txt`, `llms-full.txt` and `index.md`.
+The copy lives in `plugins/content.ts`; keep it true to the app. `public/robots.txt`
+allows every search engine and AI crawler, and `public/og.png` is the 1200×630 share image.
