@@ -115,7 +115,7 @@ ${dl}
 ## Docs
 
 - [Full page as Markdown](${SITE}llms-full.txt): features, shortcuts and FAQ
-- [README](${REPO_URL}#readme): features, privacy policy and code signing policy
+- [README](${REPO_URL}#readme): features and screenshots
 - [Licence](${REPO_URL}/blob/main/LICENSE)
 `;
   }
