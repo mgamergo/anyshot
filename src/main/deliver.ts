@@ -4,10 +4,11 @@ import { join } from 'node:path';
 import { dialog, type Rectangle } from 'electron';
 import { EXTENSIONS, expandTemplate } from '../shared/filename';
 import type { DeliverAction, DeliverRequest, DeliverResult, EncodedImage } from '../shared/ipc';
+import { type PerfMetrics, roundMs } from '../shared/perf';
 import type { Settings } from '../shared/settings';
 import { createUniqueFile, writeFileAtomic } from './atomic-file';
 import { copyPng, copyText } from './clipboard';
-import { addEntry, checkEditable, release, replaceImage } from './history';
+import { checkEditable, queueEntry, release, replaceImage } from './history';
 import { paths } from './paths';
 import { getSettings } from './settings-store';
 
@@ -105,62 +106,92 @@ export function quickSteps(settings: Settings): DeliverAction[] {
 export async function deliver(
   request: DeliverRequest,
   onEntry?: (id: string) => void,
+  perf?: PerfMetrics,
+  thumbFactory?: () => Uint8Array | ArrayBuffer | undefined,
 ): Promise<DeliverResult> {
+  const deliverT0 = performance.now();
   const settings = getSettings();
   const png = new Uint8Array(request.image.bytes);
   const steps = request.action === 'quick' ? quickSteps(settings) : [request.action];
   let result: DeliverResult = { ok: true };
+
+  // Populate the clipboard first and immediately so the user can paste right away.
+  if (steps.includes('copy')) await copyPng(png, perf);
+
   for (const step of steps) {
-    if (step === 'copy') await copyPng(png);
     if (step === 'save' || step === 'saveAs') {
       const file = request.saveImage ?? request.image;
       const ask = step === 'saveAs' || settings.output.saveAction === 'ask';
+      const saveT0 = performance.now();
       result = await saveBytes(new Uint8Array(file.bytes), file.mime, ask);
-      if (!result.ok) return result;
+      if (perf) perf.file_save = roundMs(performance.now() - saveT0);
+      if (!result.ok) {
+        if (perf) perf.deliver_total = roundMs(performance.now() - deliverT0);
+        return result;
+      }
     }
   }
 
   const edit = checkEditable(request.edit);
-  const image = {
-    png,
-    width: request.image.width,
-    height: request.image.height,
-    ...(request.thumb ? { thumb: request.thumb } : {}),
-    ...(edit ? { edit } : {}),
-  };
+  const historyT0 = performance.now();
   const existing = request.historyId
     ? await replaceImage(request.historyId, {
-        ...image,
+        png,
+        width: request.image.width,
+        height: request.image.height,
+        ...(request.thumb ? { thumb: request.thumb } : {}),
+        ...(edit ? { edit } : {}),
         ...(result.path ? { savedPath: result.path } : {}),
       })
     : undefined;
   if (existing) {
+    if (perf) perf.history_write = roundMs(performance.now() - historyT0);
     result.historyId = existing.id;
     onEntry?.(existing.id);
     if (steps.includes('pin')) await (await import('./pins')).pinEntry(existing.id);
+    if (perf) perf.deliver_total = roundMs(performance.now() - deliverT0);
     return result;
   }
-  const entry = await addEntry({ ...image, savedPath: result.path ?? null });
+  const thumb = request.thumb ?? thumbFactory;
+  const entry = queueEntry(
+    {
+      png,
+      width: request.image.width,
+      height: request.image.height,
+      savedPath: result.path ?? null,
+      ...(thumb ? { thumb } : {}),
+      ...(edit ? { edit } : {}),
+    },
+    perf,
+  );
+  if (perf) perf.history_write = roundMs(performance.now() - historyT0);
   result.historyId = entry.id;
 
   try {
     onEntry?.(entry.id);
-    const followUp = steps.includes('pin')
-      ? (await import('./pins')).pinEntry(entry.id, request.screenRect as Rectangle | undefined)
-      : steps.includes('ocr')
-        ? (await import('./ocr')).recognizeEntry(entry.id)
-        : steps.includes('upload')
-          ? (await import('./uploads')).uploadEntry(entry.id)
-          : settings.capture.showThumbnail && request.action !== 'none' && !request.quiet
-            ? (await import('./floating')).showFloating(entry)
-            : undefined;
-    await followUp;
+    if (steps.includes('pin')) {
+      await (await import('./pins')).pinEntry(
+        entry.id,
+        request.screenRect as Rectangle | undefined,
+      );
+    } else if (steps.includes('ocr')) {
+      await (await import('./ocr')).recognizeEntry(entry.id);
+    } else if (steps.includes('upload')) {
+      await (await import('./uploads')).uploadEntry(entry.id);
+    } else if (settings.capture.showThumbnail && request.action !== 'none' && !request.quiet) {
+      const floatT0 = performance.now();
+      await (await import('./floating')).showFloating(entry);
+      if (perf) perf.floating_show = roundMs(performance.now() - floatT0);
+    }
     // The editor takes its own hold, so open it before this delivery's hold goes.
     if (settings.capture.openEditorAfterQuick && request.action === 'quick') {
+      const edT0 = performance.now();
       await (await import('./editor')).openHistoryEntry(entry.id);
+      if (perf) perf.open_editor_after_quick = roundMs(performance.now() - edT0);
     }
   } finally {
     release(entry.id);
+    if (perf) perf.deliver_total = roundMs(performance.now() - deliverT0);
   }
   return result;
 }

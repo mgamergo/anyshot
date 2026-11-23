@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { composeInto } from '../engine/compose';
 import { canvasTextMeasurer, setTextMeasurer } from '../engine/shapes';
+import { type PerfMetrics, roundMs } from '../shared/perf';
 import type { ExportDone, ExportFailed, ExportJob } from './export-protocol';
 
 // Export by replay: draw the base image and the annotations onto an
@@ -14,22 +15,55 @@ if (measureCtx) setTextMeasurer(canvasTextMeasurer(measureCtx));
 
 scope.onmessage = async (event: MessageEvent<ExportJob>) => {
   const job = event.data;
+  const workerT0 = performance.now();
+  const perf: PerfMetrics = {};
   try {
-    const canvas = await composeInto(job.bitmap, job.doc);
-    job.bitmap.close();
+    const composeT0 = performance.now();
+    let canvas: OffscreenCanvas;
+    try {
+      canvas = await composeInto(job.bitmap, job.doc, perf);
+    } finally {
+      job.bitmap.close();
+    }
+    perf.compose_total = roundMs(performance.now() - composeT0);
+
     const { width, height } = canvas;
-    const pngBlob = await canvas.convertToBlob({ type: 'image/png' });
-    const saveBlob = job.save
-      ? await canvas.convertToBlob({ type: job.save.mime, quality: job.save.quality / 100 })
-      : undefined;
-    const thumb = await thumbnail(canvas, job.thumbMax);
-    const png = await pngBlob.arrayBuffer();
-    const save = saveBlob && job.save ? await saveBlob.arrayBuffer() : undefined;
+    const saveSpec = job.save;
+    const encodePng = async () => {
+      const t0 = performance.now();
+      const blob = await canvas.convertToBlob({ type: 'image/png' });
+      const bytes = await blob.arrayBuffer();
+      perf.png_encode = roundMs(performance.now() - t0);
+      return bytes;
+    };
+    const encodeSave = saveSpec
+      ? async () => {
+          const t0 = performance.now();
+          const blob = await canvas.convertToBlob({
+            type: saveSpec.mime,
+            quality: saveSpec.quality / 100,
+          });
+          const bytes = await blob.arrayBuffer();
+          perf.save_encode = roundMs(performance.now() - t0);
+          return bytes;
+        }
+      : async () => undefined;
+    const encodeThumb = async () => {
+      const t0 = performance.now();
+      const bytes = await thumbnail(canvas, job.thumbMax);
+      perf.thumb_encode = roundMs(performance.now() - t0);
+      return bytes;
+    };
+
+    const [png, save, thumb] = await Promise.all([encodePng(), encodeSave(), encodeThumb()]);
+    perf.worker_total = roundMs(performance.now() - workerT0);
+
     const done: ExportDone = {
       id: job.id,
       png: { bytes: png, mime: 'image/png', width, height },
       thumb,
-      ...(save && job.save ? { save: { bytes: save, mime: job.save.mime, width, height } } : {}),
+      perf,
+      ...(save && saveSpec ? { save: { bytes: save, mime: saveSpec.mime, width, height } } : {}),
     };
     const transfer = [png, thumb, ...(save ? [save] : [])];
     scope.postMessage(done, transfer);

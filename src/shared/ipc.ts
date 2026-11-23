@@ -5,6 +5,7 @@
  */
 import type { AutoBeautify, CustomBackground, SavedBackground } from './background';
 import type { Point, Rect, Size } from './geometry';
+import type { DeliverPerf, OverlayPaintedPerf } from './perf';
 import type { RecordingQuality } from './recording-quality';
 import type { DeepPartial, HotkeyAction, Settings, ToolChoices, ToolId } from './settings';
 import type { UpdateCheckResult, UpdateOffer, UpdateStatus } from './update';
@@ -98,6 +99,26 @@ export interface DeliverRequest {
   historyId?: string;
   /** Skip the floating preview (the editor is already showing the image). */
   quiet?: boolean;
+  /** Benchmark timings collected in renderer/worker before IPC transfer. */
+  perf?: DeliverPerf;
+}
+
+/**
+ * Fast-path delivery for unannotated captures: overlay sends only the frameId
+ * and physical-pixel crop rect; main crops the raw RGBA buffer and encodes
+ * natively without spawning a Web Worker or running Chromium's convertToBlob.
+ */
+export interface DeliverRawRequest {
+  action: DeliverAction;
+  frameId: string;
+  /** Crop rectangle in physical pixels of the captured frame. */
+  crop: Rect;
+  /** Screen-space rectangle (CSS px) the image came from, for pins in place. */
+  screenRect?: Rect;
+  /** Skip the floating preview. */
+  quiet?: boolean;
+  /** Benchmark timings collected in renderer before IPC transfer. */
+  perf?: DeliverPerf;
 }
 
 export interface DeliverResult {
@@ -265,13 +286,14 @@ export interface InvokeContract {
   'app:info': Channel<void, AppInfo>;
 
   'overlay:init': Channel<void, OverlayInit>;
-  'overlay:painted': Channel<void, void>;
+  'overlay:painted': Channel<OverlayPaintedPerf | undefined, void>;
   'overlay:selection-start': Channel<void, void>;
   'overlay:cancel': Channel<void, void>;
   'overlay:hide': Channel<void, void>;
   'frame:release': Channel<string, void>;
 
   'capture:deliver': Channel<DeliverRequest, DeliverResult>;
+  'capture:deliver-raw': Channel<DeliverRawRequest, DeliverResult>;
   'capture:to-editor': Channel<{ image: RawImage; doc: unknown }, void>;
   'capture:record': Channel<RecordRequest, void>;
   'capture:scroll': Channel<RecordRequest, void>;
@@ -373,6 +395,7 @@ export const INVOKE_ACCESS: { readonly [K in InvokeChannel]: readonly WindowKind
   'frame:release': ['overlay', 'editor'],
 
   'capture:deliver': ['overlay', 'editor', 'scroll'],
+  'capture:deliver-raw': ['overlay'],
   'capture:to-editor': ['overlay'],
   'capture:record': ['overlay'],
   'capture:scroll': ['overlay'],
@@ -431,6 +454,7 @@ export interface EventContract {
   'hotkeys:changed': HotkeyReport;
   'overlay:clear-selection': undefined;
   'overlay:reset': OverlayInit;
+  'overlay:standby': undefined;
   'floating:items': FloatingItem[];
   'history:changed': undefined;
   'recorder:command': 'stop' | 'pause' | 'resume' | 'toggle';
@@ -446,6 +470,7 @@ export const EVENT_CHANNELS: readonly EventChannel[] = [
   'hotkeys:changed',
   'overlay:clear-selection',
   'overlay:reset',
+  'overlay:standby',
   'floating:items',
   'history:changed',
   'recorder:command',

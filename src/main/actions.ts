@@ -19,18 +19,32 @@ export function isCaptureAction(action: AppAction): action is HotkeyAction {
   return action in CAPTURE_MODES;
 }
 
+let captureSession: typeof import('./capture/session') | null = null;
+
+/** Loads and caches the capture session module so hotkeys pay 0ms import latency. */
+export async function loadCaptureSession(): Promise<typeof import('./capture/session')> {
+  captureSession ??= await import('./capture/session');
+  return captureSession;
+}
+
+/** Returns the capture session module if it has already been loaded, without triggering an import. */
+export function getLoadedCaptureSession(): typeof import('./capture/session') | null {
+  return captureSession;
+}
+
 /**
  * The single entry point for tray items, global shortcuts, command-line flags
  * and tests. Feature modules are imported on first use to keep idle memory low.
  */
 export async function runAction(action: AppAction, file?: string): Promise<void> {
+  const triggeredAt = performance.now();
   const mode = CAPTURE_MODES[action];
   if (mode) {
     if (appState.recording && (mode === 'record' || mode === 'gif')) {
       return runAction('stopRecording');
     }
-    const { startCapture } = await import('./capture/session');
-    return startCapture(mode);
+    const { startCapture } = captureSession ?? (await loadCaptureSession());
+    return startCapture(mode, triggeredAt);
   }
   switch (action) {
     case 'stopRecording':

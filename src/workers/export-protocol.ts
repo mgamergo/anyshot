@@ -1,4 +1,5 @@
 import type { EncodedImage } from '../shared/ipc';
+import type { PerfMetrics } from '../shared/perf';
 
 export type ImageMime = EncodedImage['mime'];
 
@@ -17,6 +18,7 @@ export interface ExportDone {
   png: EncodedImage;
   save?: EncodedImage;
   thumb: ArrayBuffer;
+  perf?: PerfMetrics;
 }
 
 export interface ExportFailed {

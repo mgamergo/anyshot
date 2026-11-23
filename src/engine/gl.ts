@@ -1,4 +1,5 @@
 import type { Rect } from '../shared/geometry';
+import { roundMs } from '../shared/perf';
 import type { Adjust } from './model';
 import type { CensorRenderer } from './render';
 
@@ -76,11 +77,16 @@ export class GlEffects {
   private readonly fbo: WebGLFramebuffer;
   private readonly staging = new OffscreenCanvas(1, 1);
 
+  static lastCreateMs = 0;
+
   static create(): GlEffects | null {
+    const t0 = performance.now();
     try {
       return new GlEffects();
     } catch {
       return null;
+    } finally {
+      GlEffects.lastCreateMs = roundMs(performance.now() - t0);
     }
   }
 

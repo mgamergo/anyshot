@@ -94,7 +94,7 @@ export const settingsSchema = obj({
     hideInstructions: bool(false),
     dimOutside: bool(true),
     rememberLastTool: bool(true),
-    instantCapture: bool(false),
+    instantCapture: bool(true),
     delaySeconds: int(0, 0, 30),
     showThumbnail: bool(true),
     thumbnailDismissSeconds: int(5, 0, 60),

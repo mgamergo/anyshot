@@ -32,9 +32,13 @@ export async function launch(
   const userData = await mkdtemp(join(tmpdir(), 'anyshot-e2e-'));
   let launched: ElectronApplication | undefined;
   try {
-    // Most specs drive the edit tools on the selection, so instant preview starts on;
-    // specs of the default flow pass `instantPreview: false`.
-    const initial = { ...settings, capture: { instantPreview: true, ...settings.capture } };
+    // Most specs drive the edit tools on the selection, so instant preview starts on,
+    // and instant capture starts off so renderer counts return to 0 immediately;
+    // specs of the default flow pass `instantPreview: false` and instant specs pass `instantCapture: true`.
+    const initial = {
+      ...settings,
+      capture: { instantPreview: true, instantCapture: false, ...settings.capture },
+    };
     await writeFile(join(userData, 'settings.json'), JSON.stringify(initial));
     const errors: string[] = [];
     const app = await _electron.launch({

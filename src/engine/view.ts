@@ -8,6 +8,7 @@ import {
   snap45,
   squareFrom,
 } from '../shared/geometry';
+import { roundMs } from '../shared/perf';
 import type { TextFont, ToolId } from '../shared/settings';
 import type { DocStore } from './document';
 import { adjustFilter, GlEffects } from './gl';
@@ -142,8 +143,12 @@ export class CanvasView {
   private marksEnv: RenderEnv | null = null;
   private textEditor: HTMLTextAreaElement | null = null;
   private area: Rect | null = null;
-  private readonly gl = GlEffects.create();
+  private gl: GlEffects | null | undefined = undefined;
+  private committedAllocated = false;
+  private interactionAllocated = false;
   private readonly unsubscribe: () => void;
+  readonly initPerf: { gl_create: number; canvas_view_init: number };
+  paintPerf: { paint_base: number; paint_committed: number } | null = null;
 
   constructor(
     private readonly container: HTMLElement,
@@ -153,9 +158,10 @@ export class CanvasView {
     private readonly options: () => ToolOptions,
     private readonly events: ViewEvents = {},
   ) {
-    this.base = this.layer('base');
-    this.committed = this.layer('committed');
-    this.interaction = this.layer('interaction');
+    const viewT0 = performance.now();
+    this.base = this.layer('base', this.width, this.height);
+    this.committed = this.layer('committed', 0, 0);
+    this.interaction = this.layer('interaction', 0, 0);
     this.baseCtx = context(this.base, { alpha: false, willReadFrequently: false });
     this.committedCtx = context(this.committed);
     this.interactionCtx = context(this.interaction);
@@ -170,15 +176,50 @@ export class CanvasView {
       this.invalidate('committed', 'interaction');
       this.events.onStateChange?.();
     });
+    this.initPerf = {
+      gl_create: 0,
+      canvas_view_init: roundMs(performance.now() - viewT0),
+    };
   }
 
-  private layer(name: string): HTMLCanvasElement {
+  private layer(name: string, width: number, height: number): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
     canvas.className = `layer layer-${name}`;
-    canvas.width = this.width;
-    canvas.height = this.height;
+    canvas.width = width;
+    canvas.height = height;
     this.container.appendChild(canvas);
     return canvas;
+  }
+
+  private getGl(): GlEffects | null {
+    if (this.gl === undefined) this.gl = GlEffects.create();
+    return this.gl;
+  }
+
+  private ensureCommitted(): CanvasRenderingContext2D {
+    if (
+      !this.committedAllocated ||
+      this.committed.width !== this.width ||
+      this.committed.height !== this.height
+    ) {
+      this.committed.width = this.width;
+      this.committed.height = this.height;
+      this.committedAllocated = true;
+    }
+    return this.committedCtx;
+  }
+
+  private ensureInteraction(): CanvasRenderingContext2D {
+    if (
+      !this.interactionAllocated ||
+      this.interaction.width !== this.width ||
+      this.interaction.height !== this.height
+    ) {
+      this.interaction.width = this.width;
+      this.interaction.height = this.height;
+      this.interactionAllocated = true;
+    }
+    return this.interactionCtx;
   }
 
   get unit(): number {
@@ -200,16 +241,38 @@ export class CanvasView {
 
   setSource(bitmap: ImageBitmap): void {
     this.source = bitmap;
-    this.invalidate('base', 'committed');
+    const captureFirst = this.paintPerf === null;
+    const baseT0 = performance.now();
+    this.paintBase();
+    const baseMs = roundMs(performance.now() - baseT0);
+    this.dirty.base = false;
+    let committedMs = 0;
+    if (this.store.doc.annotations.length > 0 || this.committedAllocated) {
+      const committedT0 = performance.now();
+      this.paintCommitted();
+      committedMs = roundMs(performance.now() - committedT0);
+    } else {
+      this.marksEnv = null;
+    }
+    this.dirty.committed = false;
+    if (captureFirst) {
+      this.paintPerf = { paint_base: baseMs, paint_committed: committedMs };
+    }
   }
 
   /** Resizes every layer (editor crop/flip produce a new source of a new size). */
   resize(width: number, height: number): void {
     this.width = width;
     this.height = height;
-    for (const c of [this.base, this.committed, this.interaction]) {
-      c.width = width;
-      c.height = height;
+    this.base.width = width;
+    this.base.height = height;
+    if (this.committedAllocated) {
+      this.committed.width = width;
+      this.committed.height = height;
+    }
+    if (this.interactionAllocated) {
+      this.interaction.width = width;
+      this.interaction.height = height;
     }
     this.invalidate('base', 'committed', 'interaction');
   }
@@ -247,20 +310,41 @@ export class CanvasView {
       width: this.width,
       height: this.height,
       unit: this.unit,
-      censor: this.gl?.censor ?? censorFallback,
+      censor: (source, rect, mode) => (this.getGl()?.censor ?? censorFallback)(source, rect, mode),
     };
   }
 
   private paint(): void {
     this.frame = 0;
-    if (this.dirty.base) this.paintBase();
+    const captureFirst = this.paintPerf === null && this.source !== null;
+    let baseMs = 0;
+    let committedMs = 0;
+    if (this.dirty.base) {
+      const t0 = performance.now();
+      this.paintBase();
+      baseMs = roundMs(performance.now() - t0);
+    }
     if (this.dirty.committed) {
-      const ctx = this.committedCtx;
-      ctx.clearRect(0, 0, this.width, this.height);
-      this.marksEnv = drawAnnotations(ctx, this.store.doc.annotations, this.env(), this.skip);
+      const t0 = performance.now();
+      this.paintCommitted();
+      committedMs = roundMs(performance.now() - t0);
+    }
+    if (captureFirst) {
+      this.paintPerf = { paint_base: baseMs, paint_committed: committedMs };
     }
     if (this.dirty.interaction) this.paintInteraction();
     this.dirty = { base: false, committed: false, interaction: false };
+  }
+
+  private paintCommitted(): void {
+    if (this.store.doc.annotations.length === 0) {
+      if (this.committedAllocated) this.committedCtx.clearRect(0, 0, this.width, this.height);
+      this.marksEnv = null;
+      return;
+    }
+    const ctx = this.ensureCommitted();
+    ctx.clearRect(0, 0, this.width, this.height);
+    this.marksEnv = drawAnnotations(ctx, this.store.doc.annotations, this.env(), this.skip);
   }
 
   private paintBase(): void {
@@ -269,8 +353,9 @@ export class CanvasView {
     if (!this.source) return;
     const { adjust, invert } = this.previewEffects ?? this.store.doc.effects;
     const adjusted = invert || !isAdjustNeutral(adjust);
-    if (this.gl && adjusted) {
-      ctx.drawImage(this.gl.adjust(this.source, this.width, this.height, adjust, invert), 0, 0);
+    const gl = adjusted ? this.getGl() : null;
+    if (gl && adjusted) {
+      ctx.drawImage(gl.adjust(this.source, this.width, this.height, adjust, invert), 0, 0);
     } else {
       if (adjusted) ctx.filter = adjustFilter(adjust, invert);
       ctx.drawImage(this.source, 0, 0);
@@ -279,9 +364,14 @@ export class CanvasView {
   }
 
   private paintInteraction(): void {
-    const ctx = this.interactionCtx;
-    ctx.clearRect(0, 0, this.width, this.height);
     const s = this.state;
+    const selected = this.selectedAnnotations();
+    if (s.type === 'idle' && selected.length === 0) {
+      if (this.interactionAllocated) this.interactionCtx.clearRect(0, 0, this.width, this.height);
+      return;
+    }
+    const ctx = this.ensureInteraction();
+    ctx.clearRect(0, 0, this.width, this.height);
     // Drafts read the committed censors too, so a dragged magnifier shows what the export will.
     const env = this.marksEnv ?? this.env();
     if (s.type === 'draw') drawAnnotation(ctx, s.draft, env);
@@ -289,12 +379,11 @@ export class CanvasView {
       for (const a of s.originals) drawAnnotation(ctx, translate(a, s.delta.x, s.delta.y), env);
     }
     if (s.type === 'handle') drawAnnotation(ctx, s.current, env);
-    this.paintSelection(ctx);
+    this.paintSelection(ctx, selected);
   }
 
-  private paintSelection(ctx: Ctx): void {
+  private paintSelection(ctx: Ctx, selected: readonly Annotation[]): void {
     const scale = this.displayScale;
-    const selected = this.selectedAnnotations();
     for (const a of selected) {
       const shown =
         this.state.type === 'move'
@@ -726,6 +815,9 @@ export class CanvasView {
       c.height = 0;
       c.remove();
     }
+    this.committedAllocated = false;
+    this.interactionAllocated = false;
+    this.gl = null;
     this.source = null;
   }
 }
