@@ -207,3 +207,16 @@
     grid-column: 2;
   }
 }
+
+/* Plain links shown until the script mounts the table, and to crawlers without JavaScript. */
+.in-fallback {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.in-fallback span {
+  color: var(--muted);
+}
